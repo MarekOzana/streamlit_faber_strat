@@ -10,11 +10,12 @@ Sell and move to cash when monthly price < 10-month SMA
 
 (c) 2023-12-23 Marek Ozana
 """
+from typing import Literal
+
+import pandas as pd
 import streamlit as st
 import yfinance as yf
-import pandas as pd
-from typing import Literal
-import altair as alt
+import charts
 
 st.set_page_config(layout="wide", page_title="Faber's Trend-Following Strategy")
 
@@ -76,69 +77,10 @@ def back_test(
     return tbl
 
 
-def chart_cumul_ret(bt_data: pd.DataFrame, ix_name: str) -> alt.Chart:
-    g_data = bt_data[["bh", "strat", "pos"]].reset_index()
-    title = f"{ix_name}: Strategy Positions and Cumulative Return"
-    base = alt.Chart(g_data, title=title).encode(x=alt.X("Date:T").title(None))
-    chart = (
-        base.mark_point()
-        .encode(
-            y=alt.Y("strat:Q").title("Cumulative Returns").axis(format="%"),
-            color=alt.Color("pos_status:N"),
-            shape=alt.Shape("pos_status:N"),
-            tooltip=[
-                alt.Tooltip("yearmonth(Date)", title="date"),
-                "pos_status:N",
-                alt.Tooltip("strat:Q", title="Strategy Return", format="%"),
-            ],
-        )
-        .transform_calculate(pos_status="datum.pos == 1 ? 'LONG' : 'NEUTRAL'")
-        .interactive()
-    )
-    return chart
-
-
-def chart_ix_and_SMA(bt_data: pd.DataFrame, ix_name: str, n_sma: int):
-    g_data = (
-        bt_data[["Close", "sma", "pos", "trade"]]
-        .reset_index(names=["date"])
-        .rename(columns={"Close": ix_name, "sma": f"SMA{n_sma}"})
-        .assign(trade=lambda x: x["trade"].map({-1: "Sell", 1: "Buy", 0: None}))
-    )
-    base = alt.Chart(g_data, title=f"{ix_name} and signal {n_sma}-months SMA").encode(
-        x=alt.X("date:T").title(None)
-    )
-    line = (
-        base.transform_fold(fold=[ix_name, f"SMA{n_sma}"])
-        .mark_line()
-        .encode(
-            y=alt.Y("value:Q").title(None),
-            color=alt.Color("key:N"),
-        )
-    )
-    trade = (
-        alt.Chart(g_data.dropna(subset=["trade"]))
-        .mark_point()
-        .encode(
-            x=alt.X("date:T"),
-            y=alt.Y(f"{ix_name}:Q"),
-            color=alt.Color("trade:N").scale(
-                domain=["Buy", "Sell"], range=["forestgreen", "firebrick"]
-            ),
-            shape=alt.Shape("trade:N").scale(
-                domain=["Buy", "Sell"], range=["triangle-up", "square"]
-            ),
-        )
-    )
-
-    chart = (line + trade).resolve_scale(color="independent")
-    return chart
-
-
 def main():
     with st.sidebar:
         st.title("Parameters")
-        ix_name = st.sidebar.selectbox("Select Ticker", TICKER2NAME.keys())
+        ix_name = st.sidebar.selectbox("Index Name", TICKER2NAME.keys())
         ticker = TICKER2NAME[ix_name]
         data = download_data(ticker)
 
@@ -152,7 +94,7 @@ def main():
 
     st.markdown(
         """
-        # Monthly Trend-Following Strategy
+        ## Faber's Trend-Following Strategy
         
         Discover the potential of a simple trend-following strategy, based on 
         [Faber's 2006 academic research](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=962461):
@@ -162,9 +104,9 @@ def main():
         """
     )
 
-    chart_ix = chart_ix_and_SMA(bt_data, ix_name, n_sma)
+    chart_ix = charts.chart_ix_and_SMA(bt_data, ix_name, n_sma)
     st.altair_chart(chart_ix, use_container_width=True, theme=None)
-    chart_cr = chart_cumul_ret(bt_data, ix_name=ix_name)
+    chart_cr = charts.chart_cumul_ret(bt_data, ix_name=ix_name)
     st.altair_chart(chart_cr, use_container_width=True, theme=None)
 
 
