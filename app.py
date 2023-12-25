@@ -41,6 +41,7 @@ def back_test(
 
     :param data: DataFrame containing financial data.
     :param start_year: The year from which to start the back test.
+    :param n_sma: The Simple Moving Average Period
     :return: DataFrame with cumulative returns.
     """
 
@@ -62,6 +63,7 @@ def back_test(
         .assign(
             sma=lambda x: x["Close"].rolling(window=n_sma).mean(),
             pos=lambda x: (x["Close"].gt(x["sma"])).astype(int).shift(1),
+            trade=lambda x: x["pos"].diff().shift(-1).fillna(0),
             ret=lambda x: x["Close"].pct_change(),
             ret_strat=lambda x: x["ret"].mul(x["pos"]),
         )
@@ -74,14 +76,13 @@ def back_test(
     return tbl
 
 
-def create_cum_ret_chart(back_tested_data: pd.DataFrame, ix_name: str) -> alt.Chart:
-    chart_data = back_tested_data[["bh", "strat", "pos"]].reset_index()
+def chart_cumul_ret(bt_data: pd.DataFrame, ix_name: str) -> alt.Chart:
+    g_data = bt_data[["bh", "strat", "pos"]].reset_index()
     title = f"{ix_name}: Strategy Positions and Cumulative Return"
+    base = alt.Chart(g_data, title=title).encode(x=alt.X("Date:T").title(None))
     chart = (
-        alt.Chart(chart_data, title=title)
-        .mark_point()
+        base.mark_point()
         .encode(
-            x=alt.X("Date:T").title(None),
             y=alt.Y("strat:Q").title("Cumulative Returns").axis(format="%"),
             color=alt.Color("pos_status:N"),
             shape=alt.Shape("pos_status:N"),
@@ -94,6 +95,43 @@ def create_cum_ret_chart(back_tested_data: pd.DataFrame, ix_name: str) -> alt.Ch
         .transform_calculate(pos_status="datum.pos == 1 ? 'LONG' : 'NEUTRAL'")
         .interactive()
     )
+    return chart
+
+
+def chart_ix_and_SMA(bt_data: pd.DataFrame, ix_name: str, n_sma: int):
+    g_data = (
+        bt_data[["Close", "sma", "pos", "trade"]]
+        .reset_index(names=["date"])
+        .rename(columns={"Close": ix_name, "sma": f"SMA{n_sma}"})
+        .assign(trade=lambda x: x["trade"].map({-1: "Sell", 1: "Buy", 0: None}))
+    )
+    base = alt.Chart(g_data, title=f"{ix_name} and signal {n_sma}-months SMA").encode(
+        x=alt.X("date:T").title(None)
+    )
+    line = (
+        base.transform_fold(fold=[ix_name, f"SMA{n_sma}"])
+        .mark_line()
+        .encode(
+            y=alt.Y("value:Q").title(None),
+            color=alt.Color("key:N"),
+        )
+    )
+    trade = (
+        alt.Chart(g_data.dropna(subset=["trade"]))
+        .mark_point()
+        .encode(
+            x=alt.X("date:T"),
+            y=alt.Y(f"{ix_name}:Q"),
+            color=alt.Color("trade:N").scale(
+                domain=["Buy", "Sell"], range=["forestgreen", "firebrick"]
+            ),
+            shape=alt.Shape("trade:N").scale(
+                domain=["Buy", "Sell"], range=["triangle-up", "square"]
+            ),
+        )
+    )
+
+    chart = (line + trade).resolve_scale(color="independent")
     return chart
 
 
@@ -123,8 +161,11 @@ def main():
         - Sell and move to cash when monthly price < 10-month SMA
         """
     )
-    chart = create_cum_ret_chart(bt_data, ix_name=ix_name)
-    st.altair_chart(chart, use_container_width=True, theme=None)
+
+    chart_ix = chart_ix_and_SMA(bt_data, ix_name, n_sma)
+    st.altair_chart(chart_ix, use_container_width=True, theme=None)
+    chart_cr = chart_cumul_ret(bt_data, ix_name=ix_name)
+    st.altair_chart(chart_cr, use_container_width=True, theme=None)
 
 
 if __name__ == "__main__":
