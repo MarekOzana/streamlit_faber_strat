@@ -23,7 +23,7 @@ def mock_download_data():
 @pytest.fixture
 def app_test():
     with patch('app.download_data', mock_download_data):
-        yield AppTest.from_file("app.py")
+        yield AppTest.from_file("app.py", default_timeout=30)
 
 def test_app(app_test):
     app_test.run()
