@@ -11,6 +11,7 @@ Sell and move to cash when monthly price < 10-month SMA
 (c) 2023-12-23 Marek Ozana
 """
 import pandas as pd
+import numpy as np
 import streamlit as st
 import yfinance as yf
 import charts
@@ -60,6 +61,40 @@ def _calc_drawdowns(r_cum: pd.Series) -> pd.Series:
     prev_peaks = (1 + r_cum).cummax()
     dd = ((1 + r_cum) - prev_peaks) / prev_peaks
     return dd
+
+
+def _calc_ann_ret(rets: pd.Series) -> float:
+    """Calculate annualized return based on monthly returns"""
+    r_ann = (1 + rets).prod() ** (12 / len(rets)) - 1
+    return r_ann
+
+
+def _calc_ann_vol(rets: pd.Series) -> float:
+    """Calculate annualized volatility based on monthly returns"""
+    vol_ann = rets.std() * np.sqrt(12)
+    return vol_ann
+
+
+def calc_stats(bt_data: pd.DataFrame) -> pd.DataFrame:
+    """Calculate Back-test statistics"""
+    stats = pd.DataFrame(
+        {
+            "Return (annual)": {
+                "Buy & Hold": _calc_ann_ret(rets=bt_data["ret"]),
+                "Strategy": _calc_ann_ret(rets=bt_data["ret_strat"]),
+            },
+            "Volatility": {
+                "Buy & Hold": _calc_ann_vol(bt_data["ret"]),
+                "Strategy": _calc_ann_vol(bt_data["ret_strat"]),
+            },
+            "Max DrawDown": {
+                "Buy & Hold": bt_data["bh_dd"].min(),
+                "Strategy": bt_data["strat_dd"].min(),
+            },
+        }
+    )
+    stats["Ret / Vol"] = stats["Return (annual)"] / stats["Volatility"]
+    return stats
 
 
 @st.cache_data
@@ -128,10 +163,52 @@ def main():
     """
     )
 
+    st.subheader("Back Test")
     chart_cr = charts.chart_cumul_ret(bt_data, ix_name=ix_name)
     st.altair_chart(chart_cr, use_container_width=True, theme=None)
+
+    st.subheader("Statistics")
+    stats = calc_stats(bt_data)
+    stats.index.name = ix_name
+    stats_styled = (
+        stats.style.format(
+            "{:0.1%}", subset=["Return (annual)", "Max DrawDown", "Volatility"]
+        )
+        .format("{:0.2f}", subset=["Ret / Vol"])
+        .background_gradient(subset=["Return (annual)", "Max DrawDown", "Ret / Vol"])
+        .background_gradient(subset=["Volatility"], cmap="PuBu_r")
+    )
+    st.dataframe(stats_styled, use_container_width=True)
+
+    st.subheader("Signal")
     chart_ix = charts.chart_ix_and_SMA(bt_data, ix_name, n_sma)
     st.altair_chart(chart_ix, use_container_width=True, theme=None)
+
+    st.divider()
+    st.caption(
+        "## Disclaimer:\n"
+        "Back-Test Results Are Not Indicative of Future Performance.\n"
+        "This document presents the results of back-tests conducted on various "
+        "financial time series using a specific investment strategy. It is crucial "
+        "to understand that back-testing involves the application of a strategy to "
+        "historical data, and past performance in these tests is not indicative of "
+        "future results.\n"
+        "The outcomes derived from these back-tests are hypothetical and are "
+        "intended for illustrative purposes only. They do not represent actual "
+        "trading or investment, nor do they account for the impact of market "
+        "liquidity, transaction costs, or other external factors that can affect "
+        "real-world performance.\n"
+        "Investors should be cautious in interpreting back-test results as these "
+        "do not guarantee future returns and do not reflect the potential for loss "
+        "in actual trading. Market conditions, economic factors, and investment "
+        "strategies are subject to change, which can significantly affect the "
+        "performance of any investment approach.\n"
+        "Before making investment decisions, investors are encouraged to consider "
+        "their own financial circumstances, investment objectives, and risk "
+        "tolerance. These back-tests should not be construed as financial advice, "
+        "and investors should engage with financial advisors for personalized "
+        "investment strategies tailored to their specific needs and goals."
+    )
 
 
 if __name__ == "__main__":
