@@ -8,23 +8,37 @@ import altair as alt
 
 def chart_cumul_ret(bt_data: pd.DataFrame, ix_name: str) -> alt.Chart:
     g_data = (
-        bt_data[["bh", "strat", "pos"]]
+        bt_data[["bh", "strat", "pos", "bh_dd", "strat_dd"]]
         .reset_index(names=["date"])
         .rename(columns={"bh": ix_name, "strat": "Strategy"})
     )
     title = f"{ix_name}: Buy&Hold vs. Trend Strategy"
-    chart = (
+    fig_rets = (
         alt.Chart(g_data, title=title)
         .transform_fold([ix_name, "Strategy"])
         .mark_line()
         .encode(
-            x=alt.X("date:T").title(None),
+            x=alt.X("date:T").title(None).axis(None),
             y=alt.Y("value:Q").axis(format="%").title("Cumulative Return"),
             color=alt.Color("key:N").legend(title=None),
         )
-        .interactive()
     )
-    return chart
+    fig_dd = (
+        alt.Chart(
+            g_data[["date", "bh_dd", "strat_dd"]].rename(
+                columns={"bh_dd": ix_name, "strat_dd": "Strategy"}
+            )
+        )
+        .transform_fold([ix_name, "Strategy"])
+        .mark_area(opacity=0.5)
+        .encode(
+            x=alt.X("date:T").title(None),
+            y=alt.Y("value:Q").axis(format="%").title("DrawDowns"),
+            color=alt.Color("key:N"),
+        )
+    )
+    fig = (fig_rets + fig_dd).resolve_scale(color="shared").interactive()
+    return fig
 
 
 def chart_ix_and_SMA(bt_data: pd.DataFrame, ix_name: str, n_sma: int):
