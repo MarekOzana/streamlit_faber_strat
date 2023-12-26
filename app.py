@@ -1,6 +1,6 @@
 """
 Streamlit interface to Faber's trend following strategy
-Based on 
+Based on
 Faber 2007: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=962461
 
 BUY RULE
@@ -10,8 +10,6 @@ Sell and move to cash when monthly price < 10-month SMA
 
 (c) 2023-12-23 Marek Ozana
 """
-from typing import Literal
-
 import pandas as pd
 import streamlit as st
 import yfinance as yf
@@ -21,13 +19,22 @@ st.set_page_config(layout="wide", page_title="Faber's Trend-Following Strategy")
 
 TICKER2NAME: dict[str, str] = {
     "S&P 500": "^GSPC",
-    "OMXS Stockholm 30": "^OMX",
-    "Russell 2000": "^RUT",
+    "EuroStoxx 600": "^STOXX",
+    "DAX": "^GDAXI",
+    "CAC40": "^FCHI",
+    "FTSE 100": "^FTSE",
+    "Nikkey 225": "^N225",
+    "NASDAQ Composite": "^IXIC",
+    "OMX Stockholm 30": "^OMX",
+    "Russel 2000": "^RUT",
+    "Amazon": "AMZN",
+    "Bitcoin": "BTC-USD",
+    " USD/SEK": "SEK=X",
 }
 
 
 @st.cache_data
-def download_data(ticker: Literal["^GSPC", "^OMX", "^RUT"]) -> pd.DataFrame:
+def download_data(ticker: str) -> pd.DataFrame:
     """Fetch monthly data for given ticker"""
     data = (
         yf.Ticker(ticker)
@@ -96,8 +103,9 @@ def main():
         ticker = TICKER2NAME[ix_name]
         data = download_data(ticker)
 
+        start_year = max(data.index[0].year + 1, 2000)
         start_year = st.sidebar.slider(
-            "Start Year", data.index[0].year, 2021, data.index[0].year + 1
+            "Start Year", data.index[0].year, 2022, start_year
         )
         n_sma = st.sidebar.number_input(
             "SMA Period", min_value=2, max_value=24, value=10
@@ -106,20 +114,24 @@ def main():
 
     st.markdown(
         """
-        ## Faber's Trend-Following Strategy
-        
-        Discover the potential of a simple trend-following strategy, based on 
-        [Faber's 2006 academic research](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=962461):
+    ## Faber's Trend-Following Strategy
 
-        - Buy when monthly price > 10-month SMA
-        - Sell and move to cash when monthly price < 10-month SMA
-        """
+    Discover the potential of a simple trend-following strategy, based on
+    [Faber's 2006 academic research](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=962461):
+
+        - Buy when the monthly price is above the 10-month SMA
+        - Sell and switch to cash when the monthly price falls below the 10-month SMA
+
+    Since its publication in 2006, the strategy's performance beyond that year stands
+    as a real-world test. It aims to provide returns similar to stocks but with less
+    volatility and drawdowns. Give it a try!
+    """
     )
 
-    chart_ix = charts.chart_ix_and_SMA(bt_data, ix_name, n_sma)
-    st.altair_chart(chart_ix, use_container_width=True, theme=None)
     chart_cr = charts.chart_cumul_ret(bt_data, ix_name=ix_name)
     st.altair_chart(chart_cr, use_container_width=True, theme=None)
+    chart_ix = charts.chart_ix_and_SMA(bt_data, ix_name, n_sma)
+    st.altair_chart(chart_ix, use_container_width=True, theme=None)
 
 
 if __name__ == "__main__":

@@ -18,9 +18,14 @@ def chart_cumul_ret(bt_data: pd.DataFrame, ix_name: str) -> alt.Chart:
         .transform_fold([ix_name, "Strategy"])
         .mark_line()
         .encode(
-            x=alt.X("date:T").title(None).axis(None),
+            x=alt.X("date:T").title(None),
             y=alt.Y("value:Q").axis(format="%").title("Cumulative Return"),
             color=alt.Color("key:N").legend(title=None),
+            tooltip=[
+                "date:T",
+                alt.Tooltip("value:Q", format="0.1%", title="Cumulative Ret"),
+                "key:N",
+            ],
         )
     )
     fig_dd = (
@@ -30,11 +35,16 @@ def chart_cumul_ret(bt_data: pd.DataFrame, ix_name: str) -> alt.Chart:
             )
         )
         .transform_fold([ix_name, "Strategy"])
-        .mark_area(opacity=0.5)
+        .mark_area(opacity=0.8)
         .encode(
             x=alt.X("date:T").title(None),
             y=alt.Y("value:Q").axis(format="%").title("DrawDowns"),
             color=alt.Color("key:N"),
+            tooltip=[
+                "date:T",
+                alt.Tooltip("value:Q", format="0.1%", title="DrawDown"),
+                "key:N",
+            ],
         )
     )
     fig = (fig_rets + fig_dd).resolve_scale(color="shared").interactive()
