@@ -28,9 +28,31 @@ TICKER2NAME: dict[str, str] = {
 
 @st.cache_data
 def download_data(ticker: Literal["^GSPC", "^OMX", "^RUT"]) -> pd.DataFrame:
-    # Fetch monthly data
-    data = yf.Ticker(ticker).history(period="max", interval="1mo")[["Close"]]
+    """Fetch monthly data for given ticker"""
+    data = (
+        yf.Ticker(ticker)
+        .history(period="max", interval="1mo")[["Close"]]
+        .tz_localize(None)
+    )
     return data
+
+
+def _calc_cum_ret(series: pd.Series, start_dt: pd.Timestamp) -> pd.Series:
+    """
+    Calculate the cumulative return of a time series starting from a specific date.
+
+    :param series: Time series of returns.
+    :param start_dt: Start date for cumulative calculation.
+    :return: Series of cumulative returns.
+    """
+    return series.multiply(series.index >= start_dt).add(1).cumprod().sub(1)
+
+
+def _calc_drawdowns(r_cum: pd.Series) -> pd.Series:
+    """Calculate drawdowns from cumulative returns"""
+    prev_peaks = (1 + r_cum).cummax()
+    dd = ((1 + r_cum) - prev_peaks) / prev_peaks
+    return dd
 
 
 @st.cache_data
@@ -40,28 +62,16 @@ def back_test(
     """
     Perform a back test on financial data.
 
-    :param data: DataFrame containing financial data.
+    :param data: DataFrame with close of an equity index
     :param start_year: The year from which to start the back test.
     :param n_sma: The Simple Moving Average Period
     :return: DataFrame with cumulative returns.
     """
-
-    def _calc_cum_ret(series: pd.Series, start_dt: pd.Timestamp) -> pd.Series:
-        """
-        Calculate the cumulative return of a time series starting from a specific date.
-
-        :param series: Time series of returns.
-        :param start_dt: Start date for cumulative calculation.
-        :return: Series of cumulative returns.
-        """
-        return series.multiply(series.index >= start_dt).add(1).cumprod().sub(1)
-
     start_dt = pd.Timestamp(year=start_year, month=1, day=1)
     first_prev_month_day = start_dt - pd.offsets.BMonthBegin(1)
 
     tbl = (
-        data.tz_convert(None)
-        .assign(
+        data.assign(
             sma=lambda x: x["Close"].rolling(window=n_sma).mean(),
             pos=lambda x: (x["Close"].gt(x["sma"])).astype(int).shift(1),
             trade=lambda x: x["pos"].diff().shift(-1).fillna(0),
@@ -71,7 +81,9 @@ def back_test(
         .loc[first_prev_month_day:]
         .assign(
             bh=lambda df: _calc_cum_ret(df["ret"], start_dt),
+            bh_dd=lambda x: _calc_drawdowns(x["bh"]),
             strat=lambda df: _calc_cum_ret(df["ret_strat"], start_dt),
+            strat_dd=lambda x: _calc_drawdowns(x["strat"]),
         )
     )
     return tbl
